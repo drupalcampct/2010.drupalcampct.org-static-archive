@@ -1,0 +1,189 @@
+<?php
+// $Id$
+
+/**
+ * @file 
+ *   This file contains setup and teardown functions for the 
+ *   site module.
+ */
+
+/**
+ * Implementation of hook_update().
+ */
+function site_module_update_6001() {
+  if(!module_exists('permissions_api')) {
+    module_enable(array('permissions_api'));
+  }
+  if(!module_exists('views_bulk_operations')) {
+    module_enable(array('views_bulk_operations'));
+  }
+  
+  // Configure the path to the cck content type definition
+  $path = drupal_get_path ('module', 'site_module').'/content_types';
+  $files = drupal_system_listing('.inc$', $path, 'name', 0);
+  if(!empty($files)) {
+    include_once( drupal_get_path('module', 'node') .'/content_types.inc');
+    include_once( drupal_get_path('module', 'content') .'/content_admin.inc');
+    foreach($files as $file) {
+      $values = array();
+      $values['type_name'] = '<create>';
+      $values['macro'] = file_get_contents($file->filename);
+      // Import the cck content type
+      drupal_execute("content_copy_import_form", $values);
+    }
+  }
+  
+  // Define the permissions we want to grant
+  $permissions = array(
+    'create newsletter content',
+    'edit newsletter content',
+    'edit own newsletter content',
+  );
+  // Grant the permissions to defined roles
+  permissions_grant_permissions('admin', $permissions);
+  permissions_grant_permissions('editor', $permissions);
+  permissions_grant_permissions('webmaster', $permissions);
+   
+  // Define the default newsletter nodes
+  $newsletters = array(
+    array(
+      'title' => 'Drupal and You',
+      'weight' => 10,
+    ),
+    array(
+      'title' => 'Drupal Security',
+      'weight' => 9,
+    ),
+    array(
+      'title' => 'Drupal Module Review',
+      'weight' => 8,
+    ),
+    array(
+      'title' => 'Drupal Rockstars',
+      'weight' => 7,
+    ),
+  );
+
+  // Create all of our default newsletters in the database
+  foreach($newsletters as $newsletter) {
+    $node = new stdClass();
+    $node->type = 'newsletter';
+    $node->title = $newsletter['title'];
+    $node->body = '';
+    $node->field_weight[0]['value'] = $newsletter['weight'];
+    $node->uid = 1;
+    $node->status = 1;
+    $node->sticky = 0;
+    $node->format = 1;
+    $node->created = time();
+    $node->updated = time();
+    node_save($node);
+  }
+    
+  // Define the new profile fields
+  $profile_fields = array(
+    array(
+      'title' => 'First Name',
+      'name' => 'profile_firstname',
+      'explanation' => '',
+      'category' => 'Profile Info',
+      'type' => 'textfield',
+      'weight' => 0,
+      'required' => true,
+      'register' => true,
+      'visibility' => 2,
+      'autocomplete' => false,
+      'options' => null,
+      'page' => null,
+    ),
+    array(
+      'title' => 'Last Name',
+      'name' => 'profile_lastname',
+      'explanation' => '',
+      'category' => 'Profile Info',
+      'type' => 'textfield',
+      'weight' => 0,
+      'required' => true,
+      'register' => true,
+      'visibility' => 2,
+      'autocomplete' => false,
+      'options' => null,
+      'page' => null,
+    ),
+    array(
+      'title' => 'Drupal Developer.',
+      'name' => 'profile_i_am_drupal_dev',
+      'explanation' => '',
+      'category' => 'Profile Info',
+      'type' => 'checkbox',
+      'weight' => 0,
+      'required' => false,
+      'register' => true,
+      'visibility' => 2,
+    	'autocomplete' => false,
+      'options' => null,
+      'page' => null,
+    ),
+    array(
+      'title' => 'Drupal Themer.',
+      'name' => 'profile_i_am_drupal_themer',
+      'explanation' => '',
+      'category' => 'Profile Info',
+      'type' => 'checkbox',
+      'weight' => 0,
+      'required' => false,
+      'register' => true,
+      'visibility' => 2,
+    	'autocomplete' => false,
+      'options' => null,
+      'page' => null,
+    ),
+  );
+
+  // Create profile fields for each of the newsletters
+  $result = db_query("SELECT n.nid, n.title, f.field_weight_value as weight FROM {node} n 
+    INNER JOIN {node_revisions} r on r.vid = n.vid 
+    INNER JOIN {content_type_newsletter} f ON f.vid = n.vid 
+    WHERE n.status = 1 
+    ORDER BY f.field_weight_value ASC");
+  while($node = db_fetch_object($result)) {
+    $profile_fields[] = array(
+      'title' => $node->title,
+      'name' => sprintf('profile_%d', $node->nid),
+      'explanation' => '',
+      'category' => 'Newsletters',
+      'type' => 'checkbox',
+      'weight' => $node->weight,
+      'required' => false,
+      'register' => true,
+      'visibility' => 2,
+    	'autocomplete' => false,
+      'options' => null,
+      'page' => null,
+    );
+  }
+  
+  // Create/update each profile field in the database
+  foreach($profile_fields as $form_values) {
+    db_query("REPLACE INTO {profile_fields} (title, name, explanation, category, type, weight, required, register, visibility, autocomplete, options, page) VALUES ('%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, '%s', '%s')", $form_values['title'], $form_values['name'], $form_values['explanation'], $form_values['category'], $form_values['type'], $form_values['weight'], $form_values['required'], $form_values['register'], $form_values['visibility'], $form_values['autocomplete'], $form_values['options'], $form_values['page']);  
+  }
+
+  // Create the Thank You nodes
+  $node = new stdClass();
+  $node->type = 'page';
+  $node->title = 'Thank You!';
+  $node->body = '<p>Thank you for becoming a member!</p>'.
+    '<p>You will receive your first email shortly.</p><p></p>'.
+    '</div></p>';
+  $node->uid = 1;
+  $node->status = 1;
+  $node->sticky = 0;
+  $node->format = 1;
+  $node->created = time();
+  $node->updated = time();
+  node_save($node);
+  variable_set('site_module_thank_you_nid', $node->nid);
+  
+  cache_clear_all('*', 'cache_menu', TRUE);
+  views_invalidate_cache();
+}
